@@ -13,12 +13,12 @@ def get_user_info(browser):
 
   infos = container.find_elements_by_class_name('_t98z6')
   print ("infos: ", infos)
-                          
+
   alias_name = container.find_element_by_class_name('_ienqf')\
                         .find_element_by_tag_name('h1').text
   try:
     bio = container.find_element_by_class_name('_tb97a')\
-                        .find_element_by_tag_name('span').text                      
+                        .find_element_by_tag_name('span').text
   except:
     print ("\nBio is empty")
     bio = ""
@@ -34,7 +34,7 @@ def get_user_info(browser):
   return alias_name, bio, prof_img, num_of_posts, followers, following
 
 
-def extract_post_info(browser):
+def extract_post_info(browser, username):
   """Get the information from the current post"""
 
   post = browser.find_element_by_class_name('_622au')
@@ -43,18 +43,31 @@ def extract_post_info(browser):
 
   imgs = post.find_elements_by_tag_name('img')
   img = ''
-  
-  
+
   if len(imgs) >= 2:
     img = imgs[1].get_attribute('src')
-    
+
+  description = ""
+  if post.find_elements_by_tag_name('ul'):
+    comment_list = post.find_element_by_tag_name('ul')
+    comments = comment_list.find_elements_by_tag_name('li')
+    description = comments[0].text
+    name_len = len(username)
+    if description[0:name_len] == username:
+        description = description[name_len:]
+    else:
+        description = ""
+    if len(description) > 0:
+        ind = description.find("#")
+        if ind > -1 :
+            description = description[:ind]
 
   likes = 0
-  
+
   if len(post.find_elements_by_tag_name('section')) > 2:
     likes = post.find_elements_by_tag_name('section')[1]\
             .find_element_by_tag_name('div').text
-    
+
     likes = likes.split(' ')
 
     #count the names if there is no number displayed
@@ -72,15 +85,15 @@ def extract_post_info(browser):
   # or the button to display all the comments
   comments = []
   tags = []
-  
+
   date = post.find_element_by_tag_name('time').get_attribute("datetime")
-  #print ("date is ", date)  
-  
+  #print ("date is ", date)
+
   user_commented_list = []
   if post.find_elements_by_tag_name('ul'):
     comment_list = post.find_element_by_tag_name('ul')
     comments = comment_list.find_elements_by_tag_name('li')
-    
+
     if len(comments) > 1:
       # load hidden comments
       while (comments[1].text == 'load more comments'):
@@ -91,14 +104,14 @@ def extract_post_info(browser):
       for comm in comments:
         user_commented = comm.find_element_by_tag_name('a').get_attribute("href").split('/')
         user_commented_list.append(user_commented[3])
-        
+
       tags = comments[0].text + ' ' + comments[1].text
     else:
       tags = comments[0].text
 
     tags = findall(r'#[A-Za-z0-9]*', tags)
     print (len(user_commented_list), " comments.")
-  return img, tags, int(likes), int(len(comments) - 1), date, user_commented_list
+  return img, description, tags, int(likes), int(len(comments) - 1), date, user_commented_list
 
 
 def extract_information(browser, username):
@@ -127,27 +140,27 @@ def extract_information(browser, username):
 
     links = []
     links2 = []
-    
+
     #list links contains 30 links from the current view, as that is the maximum Instagram is showing at one time
     #list links2 contains all the links collected so far
-    
+
     previouslen = 0
     breaking = 0
-      
+
     while (len(links2) < num_of_posts):
-      
-      prev_divs = browser.find_elements_by_tag_name('main')      
-      links_elems = [div.find_elements_by_tag_name('a') for div in prev_divs]  
+
+      prev_divs = browser.find_elements_by_tag_name('main')
+      links_elems = [div.find_elements_by_tag_name('a') for div in prev_divs]
       links = sum([[link_elem.get_attribute('href')
         for link_elem in elems] for elems in links_elems], [])
       for link in links:
         if "/p/" in link:
-          links2.append(link) 
-      links2 = list(set(links2))   
+          links2.append(link)
+      links2 = list(set(links2))
       print ("Scrolling profile ", len(links2), "/", num_of_posts)
       body_elem.send_keys(Keys.END)
       sleep(1.5)
-   
+
       ##remove bellow part to never break the scrolling script before reaching the num_of_posts
       if (len(links2) == previouslen):
           breaking += 1
@@ -155,10 +168,10 @@ def extract_information(browser, username):
       else:
           breaking = 0
       if breaking > 3:
-          print ("\nNot getting any more posts, ending scrolling.") 
+          print ("\nNot getting any more posts, ending scrolling.")
           sleep(2)
           break
-      previouslen = len(links2)   
+      previouslen = len(links2)
       ##
 
   except NoSuchElementException as err:
@@ -166,20 +179,21 @@ def extract_information(browser, username):
 
   post_infos = []
 
-  counter = 1  
+  counter = 1
   #into user_commented_total_list I will add all username links who commented on any post of this user
   user_commented_total_list = []
   for link in links2:
-    
+
     print ("\n", counter , "/", len(links2))
     counter = counter + 1
     print ("\nScrapping link: ", link)
     browser.get(link)
     try:
-      img, tags, likes, comments, date, user_commented_list = extract_post_info(browser)
+      img, description, tags, likes, comments, date, user_commented_list = extract_post_info(browser, username)
 
       post_infos.append({
         'img': img,
+        'description': description,
         'date': date,
         'tags': tags,
         'likes': likes,
@@ -199,11 +213,11 @@ def extract_information(browser, username):
     'num_of_posts': num_of_posts,
     'followers': followers,
     'following': following,
-    'posts': post_infos     
+    'posts': post_infos
   }
 
   print ("\nUser ", username, " has ",len(user_commented_total_list)," comments.")
-  
+
   #sorts the list by frequencies, so users who comment the most are at the top
   import collections
   from operator import itemgetter, attrgetter
@@ -211,7 +225,7 @@ def extract_information(browser, username):
   com = sorted(counter.most_common(), key=itemgetter(1,0), reverse=True)
   com = map(lambda x: [x[0]] * x[1], com)
   user_commented_total_list = [item for sublist in com for item in sublist]
-   
+
   #remove duplicates preserving order (that's why not using set())
   user_commented_list = []
   last = ''
@@ -219,6 +233,6 @@ def extract_information(browser, username):
     if username.lower() != user_commented_total_list[i]:
       if last != user_commented_total_list[i]:
         user_commented_list.append(user_commented_total_list[i])
-      last = user_commented_total_list[i]     
+      last = user_commented_total_list[i]
 
   return information, user_commented_list
